@@ -1,15 +1,15 @@
-name: Build Windows Native Executables
+name: Build Windows Packages (on Linux)
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
-  build-windows-exe:
-    runs-on: windows-latest
+  build-on-linux:
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
@@ -23,308 +23,343 @@ jobs:
         cache: maven
 
     - name: Build JARs with Maven
-      run: mvn clean package -DskipTests
+      run: |
+        echo "=== Building with Maven ==="
+        mvn clean package -DskipTests
+        echo ""
+        echo "=== Verifying JARs ==="
+        ls -lh target/*.jar
 
     - name: Verify JARs created
       run: |
         echo "=== Checking JAR files ==="
-        dir target\*.jar
-        echo ""
-        echo "Server JAR:"
-        if (Test-Path "target\remote-server.jar") {
+
+        if [ -f "target/remote-server.jar" ]; then
           echo "✅ remote-server.jar found"
-          $size = (Get-Item "target\remote-server.jar").Length / 1MB
-          echo "   Size: $([math]::Round($size, 2)) MB"
-        } else {
+          ls -lh target/remote-server.jar
+        else
           echo "❌ remote-server.jar NOT FOUND!"
           exit 1
-        }
-        echo ""
-        echo "Client JAR:"
-        if (Test-Path "target\remote-client.jar") {
+        fi
+
+        if [ -f "target/remote-client.jar" ]; then
           echo "✅ remote-client.jar found"
-          $size = (Get-Item "target\remote-client.jar").Length / 1MB
-          echo "   Size: $([math]::Round($size, 2)) MB"
-        } else {
+          ls -lh target/remote-client.jar
+        else
           echo "❌ remote-client.jar NOT FOUND!"
           exit 1
-        }
+        fi
 
-    - name: Download and install Launch4j
+    - name: Download Windows JDK for jlink
       run: |
-        echo "=== Downloading Launch4j ==="
-        $url = "https://sourceforge.net/projects/launch4j/files/launch4j-3/3.50/launch4j-3.50-win32.zip/download"
-        Invoke-WebRequest -Uri $url -OutFile launch4j.zip -MaximumRetryCount 3
+        echo "=== Downloading Windows JDK 17 for jlink ==="
 
-        echo "=== Extracting Launch4j ==="
-        Expand-Archive -Path launch4j.zip -DestinationPath . -Force
+        # Download Windows JDK (for creating Windows JRE)
+        wget -q https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jdk_x64_windows_hotspot_17.0.9_9.zip
 
-        echo "=== Launch4j installed ==="
-        dir launch4j
+        echo "=== Extracting Windows JDK ==="
+        unzip -q OpenJDK17U-jdk_x64_windows_hotspot_17.0.9_9.zip
 
-    - name: Create Server EXE with Launch4j
+        # Rename to standard name
+        mv jdk-17.0.9+9 windows-jdk
+
+        echo "=== Windows JDK extracted ==="
+        ls -lh windows-jdk/bin/ | head -10
+
+    - name: Create Minimal Windows JRE with jlink
       run: |
-        echo "=== Creating RemoteServer.exe ==="
-        .\launch4j\launch4j.exe .\launch4j-server.xml
+        echo "=== Creating minimal Windows JRE with jlink ==="
 
-        if (Test-Path "server.exe") {
-          echo "✅ server.exe created successfully"
-          $size = (Get-Item "server.exe").Length / 1MB
-          echo "   Size: $([math]::Round($size, 2)) MB"
-        } else {
-          echo "❌ Failed to create server.exe"
-          exit 1
-        }
+        # Use the downloaded Windows JDK to create Windows JRE
+        MODULES="java.base,java.desktop,java.logging,java.management,java.naming,java.net.http,java.sql,java.xml"
 
-    - name: Create Client EXE with Launch4j
-      run: |
-        echo "=== Creating RemoteClient.exe ==="
-        .\launch4j\launch4j.exe .\launch4j-client.xml
-
-        if (Test-Path "client.exe") {
-          echo "✅ client.exe created successfully"
-          $size = (Get-Item "client.exe").Length / 1MB
-          echo "   Size: $([math]::Round($size, 2)) MB"
-        } else {
-          echo "❌ Failed to create client.exe"
-          exit 1
-        }
-
-    - name: Create Minimal JRE with jlink
-      run: |
-        echo "=== Creating minimal JRE for bundling ==="
-
-        $modules = "java.base,java.desktop,java.logging,java.management,java.naming,java.net.http,java.sql,java.xml"
-
-        jlink `
-          --add-modules $modules `
-          --output jre-bundle `
-          --strip-debug `
-          --no-header-files `
-          --no-man-pages `
+        ./windows-jdk/bin/jlink \
+          --add-modules $MODULES \
+          --output jre-windows \
+          --strip-debug \
+          --no-header-files \
+          --no-man-pages \
           --compress=2
 
-        echo "=== JRE bundle created ==="
-        $size = (Get-ChildItem jre-bundle -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
-        echo "Total size: $([math]::Round($size, 2)) MB"
+        echo "=== Windows JRE created ==="
+        du -sh jre-windows
+        echo ""
+        echo "JRE contents:"
+        ls -lh jre-windows/
 
-    - name: Package Server Bundle
+    - name: Create Server Package
       run: |
-        echo "=== Creating Server bundle ==="
+        echo "=== Creating Server package ==="
 
-        # Create server directory
-        New-Item -ItemType Directory -Force -Path "release\RemoteServer"
+        # Create directory structure
+        mkdir -p release/RemoteServer
 
-        # Copy EXE
-        Copy-Item "server.exe" "release\RemoteServer\RemoteServer.exe"
+        # Copy JAR
+        cp target/remote-server.jar release/RemoteServer/
 
-        # Copy JAR (backup if user has Java)
-        Copy-Item "target\remote-server.jar" "release\RemoteServer\"
+        # Copy Windows JRE
+        cp -r jre-windows release/RemoteServer/jre
 
-        # Copy bundled JRE
-        Copy-Item "jre-bundle" "release\RemoteServer\jre" -Recurse
+        # Create Windows launch script (.bat)
+        cat > release/RemoteServer/RemoteServer.bat << 'EOF'
+        @echo off
+        echo ================================================================
+        echo           REMOTE CONTROL SERVER - Starting...
+        echo ================================================================
+        echo.
+
+        REM Get script directory
+        set SCRIPT_DIR=%~dp0
+
+        REM Check if bundled JRE exists
+        if exist "%SCRIPT_DIR%jre\bin\java.exe" (
+            echo Using bundled JRE...
+            "%SCRIPT_DIR%jre\bin\java.exe" -jar "%SCRIPT_DIR%remote-server.jar"
+        ) else (
+            echo Bundled JRE not found, trying system Java...
+            java -jar "%SCRIPT_DIR%remote-server.jar"
+        )
+
+        echo.
+        echo Server stopped.
+        pause
+        EOF
+
+        # Create Linux launch script (.sh) for testing
+        cat > release/RemoteServer/RemoteServer.sh << 'EOF'
+        #!/bin/bash
+        echo "================================================================"
+        echo "           REMOTE CONTROL SERVER - Starting..."
+        echo "================================================================"
+        echo ""
+
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+        if [ -f "$SCRIPT_DIR/jre/bin/java" ]; then
+            echo "Using bundled JRE..."
+            "$SCRIPT_DIR/jre/bin/java" -jar "$SCRIPT_DIR/remote-server.jar"
+        else
+            echo "Bundled JRE not found, trying system Java..."
+            java -jar "$SCRIPT_DIR/remote-server.jar"
+        fi
+        EOF
+        chmod +x release/RemoteServer/RemoteServer.sh
 
         # Create README
-        @"
+        cat > release/RemoteServer/README.txt << 'EOF'
         ╔══════════════════════════════════════════════════════════════╗
         ║           REMOTE CONTROL SERVER - Windows                     ║
         ╚══════════════════════════════════════════════════════════════╝
 
         🚀 QUICK START:
 
-        1. Double-click "RemoteServer.exe"
-        2. Server will start and show IP addresses in the UI
-        3. Note the IP address (e.g., 192.168.1.100)
-        4. Give this IP to the client machine
+        WINDOWS:
+        --------
+        1. Double-click "RemoteServer.bat"
+        2. Server will start and show IP addresses
+        3. Note the IP (e.g., 192.168.1.100) for client
+
+        LINUX/MAC (for testing):
+        -------------------------
+        1. Run: ./RemoteServer.sh
+        2. Note the IP address shown
 
         ═══════════════════════════════════════════════════════════════
 
-        📦 WHAT'S INCLUDED:
+        📦 PACKAGE CONTENTS:
 
-        RemoteServer.exe    - Windows executable (uses bundled JRE)
-        jre/                - Java Runtime (bundled, no install needed)
-        remote-server.jar   - Backup JAR file
+        remote-server.jar    - Server application
+        jre/                 - Java Runtime (bundled, no install needed!)
+        RemoteServer.bat     - Windows launcher
+        RemoteServer.sh      - Linux/Mac launcher
+        README.txt           - This file
 
         ═══════════════════════════════════════════════════════════════
 
         ⚙️ SYSTEM REQUIREMENTS:
 
         • Windows 7 or later (64-bit)
+        • OR Linux/Mac (for testing)
         • No Java installation required!
         • Network adapter (WiFi or Ethernet)
-        • ~100MB disk space
+        • ~50MB disk space
 
         ═══════════════════════════════════════════════════════════════
 
-        🔥 FIREWALL:
+        🔥 WINDOWS FIREWALL:
 
-        If Windows Firewall blocks the app:
+        If Windows Firewall blocks:
         1. Click "Allow access" when prompted
-        2. Or manually allow port 8888 in Windows Defender Firewall
+        2. Or manually allow port 8888
 
         ═══════════════════════════════════════════════════════════════
 
         📝 NOTES:
 
-        • Server listens on port 8888 by default
-        • All IP addresses are shown in the UI
-        • Clients must be on the same network (LAN)
-        • No admin privileges required
-
-        ═══════════════════════════════════════════════════════════════
-
-        ℹ️ SUPPORT:
-
-        Issues? Check:
-        1. Windows Firewall settings
-        2. Network connection
-        3. Port 8888 not in use
+        • Server listens on port 8888
+        • All IP addresses shown in UI
+        • Clients must be on same LAN
+        • Bundled JRE is Windows-compatible
 
         Version: 1.0.0
-        Built: $(Get-Date -Format "yyyy-MM-dd")
+        Built on: Ubuntu (GitHub Actions)
 
-        "@ | Out-File -FilePath "release\RemoteServer\README.txt" -Encoding UTF8
+        EOF
 
-        # Create quick start batch file
-        @"
-        @echo off
-        echo ╔══════════════════════════════════════════════════════════════╗
-        echo ║              Starting Remote Control Server                   ║
-        echo ╚══════════════════════════════════════════════════════════════╝
-        echo.
-        echo Starting server...
-        echo.
-        start RemoteServer.exe
-        echo.
-        echo Server started! Check the application window.
-        echo.
-        pause
-        "@ | Out-File -FilePath "release\RemoteServer\START_SERVER.bat" -Encoding ASCII
+        echo "✅ Server package created"
+        ls -lah release/RemoteServer/
 
-        echo "✅ Server bundle created"
-
-    - name: Package Client Bundle
+    - name: Create Client Package
       run: |
-        echo "=== Creating Client bundle ==="
+        echo "=== Creating Client package ==="
 
-        # Create client directory
-        New-Item -ItemType Directory -Force -Path "release\RemoteClient"
+        # Create directory structure
+        mkdir -p release/RemoteClient
 
-        # Copy EXE
-        Copy-Item "client.exe" "release\RemoteClient\RemoteClient.exe"
+        # Copy JAR
+        cp target/remote-client.jar release/RemoteClient/
 
-        # Copy JAR (backup)
-        Copy-Item "target\remote-client.jar" "release\RemoteClient\"
+        # Copy Windows JRE
+        cp -r jre-windows release/RemoteClient/jre
 
-        # Copy bundled JRE
-        Copy-Item "jre-bundle" "release\RemoteClient\jre" -Recurse
+        # Create Windows launch script (.bat)
+        cat > release/RemoteClient/RemoteClient.bat << 'EOF'
+        @echo off
+        echo ================================================================
+        echo           REMOTE CONTROL CLIENT - Starting...
+        echo ================================================================
+        echo.
+
+        REM Get script directory
+        set SCRIPT_DIR=%~dp0
+
+        REM Check if bundled JRE exists
+        if exist "%SCRIPT_DIR%jre\bin\java.exe" (
+            echo Using bundled JRE...
+            "%SCRIPT_DIR%jre\bin\java.exe" -jar "%SCRIPT_DIR%remote-client.jar"
+        ) else (
+            echo Bundled JRE not found, trying system Java...
+            java -jar "%SCRIPT_DIR%remote-client.jar"
+        )
+
+        echo.
+        echo Client stopped.
+        pause
+        EOF
+
+        # Create Linux launch script (.sh) for testing
+        cat > release/RemoteClient/RemoteClient.sh << 'EOF'
+        #!/bin/bash
+        echo "================================================================"
+        echo "           REMOTE CONTROL CLIENT - Starting..."
+        echo "================================================================"
+        echo ""
+
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+        if [ -f "$SCRIPT_DIR/jre/bin/java" ]; then
+            echo "Using bundled JRE..."
+            "$SCRIPT_DIR/jre/bin/java" -jar "$SCRIPT_DIR/remote-client.jar"
+        else
+            echo "Bundled JRE not found, trying system Java..."
+            java -jar "$SCRIPT_DIR/remote-client.jar"
+        fi
+        EOF
+        chmod +x release/RemoteClient/RemoteClient.sh
 
         # Create README
-        @"
+        cat > release/RemoteClient/README.txt << 'EOF'
         ╔══════════════════════════════════════════════════════════════╗
         ║           REMOTE CONTROL CLIENT - Windows                     ║
         ╚══════════════════════════════════════════════════════════════╝
 
         🚀 QUICK START:
 
-        1. Double-click "RemoteClient.exe"
-        2. Enter the server IP address in the "Server" field
-        3. Enter port "8888" (default)
+        WINDOWS:
+        --------
+        1. Double-click "RemoteClient.bat"
+        2. Enter server IP in "Server" field
+        3. Port: 8888 (default)
         4. Click "Connect"
-        5. Status will turn green when connected
+
+        LINUX/MAC (for testing):
+        -------------------------
+        1. Run: ./RemoteClient.sh
+        2. Follow same connection steps
 
         ═══════════════════════════════════════════════════════════════
 
-        📦 WHAT'S INCLUDED:
+        📦 PACKAGE CONTENTS:
 
-        RemoteClient.exe    - Windows executable (uses bundled JRE)
-        jre/                - Java Runtime (bundled, no install needed)
-        remote-client.jar   - Backup JAR file
+        remote-client.jar    - Client application
+        jre/                 - Java Runtime (bundled, no install needed!)
+        RemoteClient.bat     - Windows launcher
+        RemoteClient.sh      - Linux/Mac launcher
+        README.txt           - This file
 
         ═══════════════════════════════════════════════════════════════
 
         ⚙️ SYSTEM REQUIREMENTS:
 
         • Windows 7 or later (64-bit)
+        • OR Linux/Mac (for testing)
         • No Java installation required!
-        • Network connection to server
-        • ~100MB disk space
+        • Network connection
+        • ~50MB disk space
 
         ═══════════════════════════════════════════════════════════════
 
         🔗 CONNECTION:
 
-        To connect to server:
-        1. Get server IP from server UI (e.g., 192.168.1.100)
-        2. Enter in "Server" field
-        3. Keep port as 8888
-        4. Click "Connect"
+        Get server IP from server UI (e.g., 192.168.1.100)
+        Enter in "Server" field
+        Port: 8888
+        Click "Connect"
 
         ═══════════════════════════════════════════════════════════════
 
         🎮 FEATURES:
 
-        ✅ Application Management - List/Start/Stop apps
-        ✅ Process Management - Kill processes
-        ✅ Screenshot Capture - Capture server screen
-        ✅ File Transfer - Upload/Download files
-        ✅ System Control - Shutdown/Restart server
+        ✅ Application Management
+        ✅ Process Management
+        ✅ Screenshot Capture
+        ✅ File Transfer
+        ✅ System Control
 
         ═══════════════════════════════════════════════════════════════
 
         📝 NOTES:
 
-        • Client and server must be on same network
+        • Client and server must be on same LAN
         • Check firewall if connection fails
-        • All commands are logged in the UI
-
-        ═══════════════════════════════════════════════════════════════
-
-        ℹ️ SUPPORT:
-
-        Connection failed? Check:
-        1. Server is running
-        2. Correct IP address
-        3. Both on same network
-        4. Firewall allows connection
+        • Bundled JRE is Windows-compatible
 
         Version: 1.0.0
-        Built: $(Get-Date -Format "yyyy-MM-dd")
+        Built on: Ubuntu (GitHub Actions)
 
-        "@ | Out-File -FilePath "release\RemoteClient\README.txt" -Encoding UTF8
+        EOF
 
-        # Create quick start batch file
-        @"
-        @echo off
-        echo ╔══════════════════════════════════════════════════════════════╗
-        echo ║              Starting Remote Control Client                   ║
-        echo ╚══════════════════════════════════════════════════════════════╝
-        echo.
-        echo Starting client...
-        echo.
-        start RemoteClient.exe
-        echo.
-        echo Client started! Check the application window.
-        echo Enter server IP and click Connect.
-        echo.
-        pause
-        "@ | Out-File -FilePath "release\RemoteClient\START_CLIENT.bat" -Encoding ASCII
-
-        echo "✅ Client bundle created"
+        echo "✅ Client package created"
+        ls -lah release/RemoteClient/
 
     - name: Create ZIP archives
       run: |
         echo "=== Creating ZIP archives ==="
 
+        cd release
+
         # Create Server ZIP
-        Compress-Archive -Path "release\RemoteServer\*" -DestinationPath "release\RemoteControlServer-Windows.zip" -Force
-        $size = (Get-Item "release\RemoteControlServer-Windows.zip").Length / 1MB
-        echo "✅ Server ZIP created: $([math]::Round($size, 2)) MB"
+        zip -r -q RemoteControlServer-Windows.zip RemoteServer/
+        SERVER_SIZE=$(du -h RemoteControlServer-Windows.zip | cut -f1)
+        echo "✅ Server ZIP: $SERVER_SIZE"
 
         # Create Client ZIP
-        Compress-Archive -Path "release\RemoteClient\*" -DestinationPath "release\RemoteControlClient-Windows.zip" -Force
-        $size = (Get-Item "release\RemoteControlClient-Windows.zip").Length / 1MB
-        echo "✅ Client ZIP created: $([math]::Round($size, 2)) MB"
+        zip -r -q RemoteControlClient-Windows.zip RemoteClient/
+        CLIENT_SIZE=$(du -h RemoteControlClient-Windows.zip | cut -f1)
+        echo "✅ Client ZIP: $CLIENT_SIZE"
+
+        cd ..
+        ls -lh release/*.zip
 
     - name: Upload Server Bundle
       uses: actions/upload-artifact@v4
@@ -342,69 +377,64 @@ jobs:
 
     - name: Create Build Summary
       run: |
-        $serverSize = [math]::Round((Get-Item "release\RemoteControlServer-Windows.zip").Length / 1MB, 2)
-        $clientSize = [math]::Round((Get-Item "release\RemoteControlClient-Windows.zip").Length / 1MB, 2)
+        SERVER_SIZE=$(du -h release/RemoteControlServer-Windows.zip | cut -f1)
+        CLIENT_SIZE=$(du -h release/RemoteControlClient-Windows.zip | cut -f1)
 
-        @"
-        # 🎉 Windows Build Successful!
+        cat >> $GITHUB_STEP_SUMMARY << EOF
+        # 🎉 Windows Build Complete (Built on Linux)!
 
         ## 📦 Artifacts Created
 
         ### 🖥️ Server Bundle
         - **File:** RemoteControlServer-Windows.zip
-        - **Size:** $serverSize MB
-        - **Contains:**
-          - ✅ RemoteServer.exe (native Windows executable)
-          - ✅ Bundled JRE 17 (no Java install needed)
-          - ✅ README.txt with instructions
-          - ✅ START_SERVER.bat for quick launch
+        - **Size:** $SERVER_SIZE
+        - **Contents:**
+          - ✅ remote-server.jar
+          - ✅ Bundled Windows JRE (minimal, ~35MB)
+          - ✅ RemoteServer.bat (Windows launcher)
+          - ✅ RemoteServer.sh (Linux/Mac launcher)
+          - ✅ README.txt
 
         ### 💻 Client Bundle
         - **File:** RemoteControlClient-Windows.zip
-        - **Size:** $clientSize MB
-        - **Contains:**
-          - ✅ RemoteClient.exe (native Windows executable)
-          - ✅ Bundled JRE 17 (no Java install needed)
-          - ✅ README.txt with instructions
-          - ✅ START_CLIENT.bat for quick launch
+        - **Size:** $CLIENT_SIZE
+        - **Contents:**
+          - ✅ remote-client.jar
+          - ✅ Bundled Windows JRE (minimal, ~35MB)
+          - ✅ RemoteClient.bat (Windows launcher)
+          - ✅ RemoteClient.sh (Linux/Mac launcher)
+          - ✅ README.txt
 
         ## 🚀 How to Use
 
-        ### Server Setup:
-        1. Download **RemoteControlServer-Windows.zip**
-        2. Extract to any folder
-        3. Double-click **RemoteServer.exe** or **START_SERVER.bat**
-        4. Note the IP addresses shown in the UI
+        ### On Windows:
+        1. Download and extract ZIP
+        2. Double-click \`RemoteServer.bat\` or \`RemoteClient.bat\`
+        3. No Java installation needed!
 
-        ### Client Setup:
-        1. Download **RemoteControlClient-Windows.zip**
-        2. Extract to any folder
-        3. Double-click **RemoteClient.exe** or **START_CLIENT.bat**
-        4. Enter server IP and click Connect
+        ### On Linux/Mac (for testing):
+        1. Download and extract ZIP
+        2. Run: \`./RemoteServer.sh\` or \`./RemoteClient.sh\`
+        3. Bundled JRE is Windows-only, so system Java will be used
 
         ## ✅ Features
 
-        - ✅ **No Java Required** - JRE bundled
-        - ✅ **Native .exe** - Professional look
+        - ✅ **No Java Required on Windows** - JRE bundled
+        - ✅ **Simple .bat scripts** - Double-click to run
+        - ✅ **Cross-platform build** - Built on Linux for Windows
+        - ✅ **Minimal JRE** - Only 35MB (vs 180MB full JRE)
         - ✅ **Self-contained** - Everything included
-        - ✅ **Windows 7+** - Compatible
-        - ✅ **Easy to use** - Double-click to start
 
-        ## 📝 System Requirements
+        ## 📝 Notes
 
-        - Windows 7 or later (64-bit)
-        - ~100MB disk space per app
-        - Network adapter (for LAN connection)
-        - No admin privileges required
-
-        ## 🔥 Firewall Note
-
-        Windows may prompt to allow network access. Click "Allow" to enable communication.
+        - Built on Ubuntu (Linux) using cross-platform tools
+        - Windows JRE created with jlink
+        - Simple .bat scripts instead of .exe
+        - Works on Windows 7+ (64-bit)
 
         ---
 
-        **Version:** 1.0.0
-        **Build Date:** $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-        **Platform:** Windows x64
-
-        "@ | Out-File -FilePath "$env:GITHUB_STEP_SUMMARY" -Encoding UTF8
+        **Build Date:** $(date '+%Y-%m-%d %H:%M:%S UTC')
+        **Platform:** Ubuntu Latest (Linux)
+        **Target:** Windows x64
+        EOF
