@@ -1,0 +1,66 @@
+# Maven build output
+target/
+target/*
+
+# Compiled class files
+*.class
+
+# Log files
+*.log
+server.log
+client.log
+
+# Package files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# JVM crash logs
+hs_err_pid*
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build artifacts
+build/
+release/
+dist/
+*.exe
+
+# JRE bundles
+jre/
+jre-bundle/
+custom-jre/
+
+# Launch4j
+launch4j/
+*.zip
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Maven wrapper
+.mvn/wrapper/maven-wrapper.jar
+
+# Test output
+test-output/
+*.tlog

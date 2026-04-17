@@ -1,0 +1,410 @@
+name: Build Windows Native Executables
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Build JARs with Maven
+      run: mvn clean package -DskipTests
+
+    - name: Verify JARs created
+      run: |
+        echo "=== Checking JAR files ==="
+        dir target\*.jar
+        echo ""
+        echo "Server JAR:"
+        if (Test-Path "target\remote-server.jar") {
+          echo "✅ remote-server.jar found"
+          $size = (Get-Item "target\remote-server.jar").Length / 1MB
+          echo "   Size: $([math]::Round($size, 2)) MB"
+        } else {
+          echo "❌ remote-server.jar NOT FOUND!"
+          exit 1
+        }
+        echo ""
+        echo "Client JAR:"
+        if (Test-Path "target\remote-client.jar") {
+          echo "✅ remote-client.jar found"
+          $size = (Get-Item "target\remote-client.jar").Length / 1MB
+          echo "   Size: $([math]::Round($size, 2)) MB"
+        } else {
+          echo "❌ remote-client.jar NOT FOUND!"
+          exit 1
+        }
+
+    - name: Download and install Launch4j
+      run: |
+        echo "=== Downloading Launch4j ==="
+        $url = "https://sourceforge.net/projects/launch4j/files/launch4j-3/3.50/launch4j-3.50-win32.zip/download"
+        Invoke-WebRequest -Uri $url -OutFile launch4j.zip -MaximumRetryCount 3
+
+        echo "=== Extracting Launch4j ==="
+        Expand-Archive -Path launch4j.zip -DestinationPath . -Force
+
+        echo "=== Launch4j installed ==="
+        dir launch4j
+
+    - name: Create Server EXE with Launch4j
+      run: |
+        echo "=== Creating RemoteServer.exe ==="
+        .\launch4j\launch4j.exe .\launch4j-server.xml
+
+        if (Test-Path "server.exe") {
+          echo "✅ server.exe created successfully"
+          $size = (Get-Item "server.exe").Length / 1MB
+          echo "   Size: $([math]::Round($size, 2)) MB"
+        } else {
+          echo "❌ Failed to create server.exe"
+          exit 1
+        }
+
+    - name: Create Client EXE with Launch4j
+      run: |
+        echo "=== Creating RemoteClient.exe ==="
+        .\launch4j\launch4j.exe .\launch4j-client.xml
+
+        if (Test-Path "client.exe") {
+          echo "✅ client.exe created successfully"
+          $size = (Get-Item "client.exe").Length / 1MB
+          echo "   Size: $([math]::Round($size, 2)) MB"
+        } else {
+          echo "❌ Failed to create client.exe"
+          exit 1
+        }
+
+    - name: Create Minimal JRE with jlink
+      run: |
+        echo "=== Creating minimal JRE for bundling ==="
+
+        $modules = "java.base,java.desktop,java.logging,java.management,java.naming,java.net.http,java.sql,java.xml"
+
+        jlink `
+          --add-modules $modules `
+          --output jre-bundle `
+          --strip-debug `
+          --no-header-files `
+          --no-man-pages `
+          --compress=2
+
+        echo "=== JRE bundle created ==="
+        $size = (Get-ChildItem jre-bundle -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
+        echo "Total size: $([math]::Round($size, 2)) MB"
+
+    - name: Package Server Bundle
+      run: |
+        echo "=== Creating Server bundle ==="
+
+        # Create server directory
+        New-Item -ItemType Directory -Force -Path "release\RemoteServer"
+
+        # Copy EXE
+        Copy-Item "server.exe" "release\RemoteServer\RemoteServer.exe"
+
+        # Copy JAR (backup if user has Java)
+        Copy-Item "target\remote-server.jar" "release\RemoteServer\"
+
+        # Copy bundled JRE
+        Copy-Item "jre-bundle" "release\RemoteServer\jre" -Recurse
+
+        # Create README
+        @"
+        ╔══════════════════════════════════════════════════════════════╗
+        ║           REMOTE CONTROL SERVER - Windows                     ║
+        ╚══════════════════════════════════════════════════════════════╝
+
+        🚀 QUICK START:
+
+        1. Double-click "RemoteServer.exe"
+        2. Server will start and show IP addresses in the UI
+        3. Note the IP address (e.g., 192.168.1.100)
+        4. Give this IP to the client machine
+
+        ═══════════════════════════════════════════════════════════════
+
+        📦 WHAT'S INCLUDED:
+
+        RemoteServer.exe    - Windows executable (uses bundled JRE)
+        jre/                - Java Runtime (bundled, no install needed)
+        remote-server.jar   - Backup JAR file
+
+        ═══════════════════════════════════════════════════════════════
+
+        ⚙️ SYSTEM REQUIREMENTS:
+
+        • Windows 7 or later (64-bit)
+        • No Java installation required!
+        • Network adapter (WiFi or Ethernet)
+        • ~100MB disk space
+
+        ═══════════════════════════════════════════════════════════════
+
+        🔥 FIREWALL:
+
+        If Windows Firewall blocks the app:
+        1. Click "Allow access" when prompted
+        2. Or manually allow port 8888 in Windows Defender Firewall
+
+        ═══════════════════════════════════════════════════════════════
+
+        📝 NOTES:
+
+        • Server listens on port 8888 by default
+        • All IP addresses are shown in the UI
+        • Clients must be on the same network (LAN)
+        • No admin privileges required
+
+        ═══════════════════════════════════════════════════════════════
+
+        ℹ️ SUPPORT:
+
+        Issues? Check:
+        1. Windows Firewall settings
+        2. Network connection
+        3. Port 8888 not in use
+
+        Version: 1.0.0
+        Built: $(Get-Date -Format "yyyy-MM-dd")
+
+        "@ | Out-File -FilePath "release\RemoteServer\README.txt" -Encoding UTF8
+
+        # Create quick start batch file
+        @"
+        @echo off
+        echo ╔══════════════════════════════════════════════════════════════╗
+        echo ║              Starting Remote Control Server                   ║
+        echo ╚══════════════════════════════════════════════════════════════╝
+        echo.
+        echo Starting server...
+        echo.
+        start RemoteServer.exe
+        echo.
+        echo Server started! Check the application window.
+        echo.
+        pause
+        "@ | Out-File -FilePath "release\RemoteServer\START_SERVER.bat" -Encoding ASCII
+
+        echo "✅ Server bundle created"
+
+    - name: Package Client Bundle
+      run: |
+        echo "=== Creating Client bundle ==="
+
+        # Create client directory
+        New-Item -ItemType Directory -Force -Path "release\RemoteClient"
+
+        # Copy EXE
+        Copy-Item "client.exe" "release\RemoteClient\RemoteClient.exe"
+
+        # Copy JAR (backup)
+        Copy-Item "target\remote-client.jar" "release\RemoteClient\"
+
+        # Copy bundled JRE
+        Copy-Item "jre-bundle" "release\RemoteClient\jre" -Recurse
+
+        # Create README
+        @"
+        ╔══════════════════════════════════════════════════════════════╗
+        ║           REMOTE CONTROL CLIENT - Windows                     ║
+        ╚══════════════════════════════════════════════════════════════╝
+
+        🚀 QUICK START:
+
+        1. Double-click "RemoteClient.exe"
+        2. Enter the server IP address in the "Server" field
+        3. Enter port "8888" (default)
+        4. Click "Connect"
+        5. Status will turn green when connected
+
+        ═══════════════════════════════════════════════════════════════
+
+        📦 WHAT'S INCLUDED:
+
+        RemoteClient.exe    - Windows executable (uses bundled JRE)
+        jre/                - Java Runtime (bundled, no install needed)
+        remote-client.jar   - Backup JAR file
+
+        ═══════════════════════════════════════════════════════════════
+
+        ⚙️ SYSTEM REQUIREMENTS:
+
+        • Windows 7 or later (64-bit)
+        • No Java installation required!
+        • Network connection to server
+        • ~100MB disk space
+
+        ═══════════════════════════════════════════════════════════════
+
+        🔗 CONNECTION:
+
+        To connect to server:
+        1. Get server IP from server UI (e.g., 192.168.1.100)
+        2. Enter in "Server" field
+        3. Keep port as 8888
+        4. Click "Connect"
+
+        ═══════════════════════════════════════════════════════════════
+
+        🎮 FEATURES:
+
+        ✅ Application Management - List/Start/Stop apps
+        ✅ Process Management - Kill processes
+        ✅ Screenshot Capture - Capture server screen
+        ✅ File Transfer - Upload/Download files
+        ✅ System Control - Shutdown/Restart server
+
+        ═══════════════════════════════════════════════════════════════
+
+        📝 NOTES:
+
+        • Client and server must be on same network
+        • Check firewall if connection fails
+        • All commands are logged in the UI
+
+        ═══════════════════════════════════════════════════════════════
+
+        ℹ️ SUPPORT:
+
+        Connection failed? Check:
+        1. Server is running
+        2. Correct IP address
+        3. Both on same network
+        4. Firewall allows connection
+
+        Version: 1.0.0
+        Built: $(Get-Date -Format "yyyy-MM-dd")
+
+        "@ | Out-File -FilePath "release\RemoteClient\README.txt" -Encoding UTF8
+
+        # Create quick start batch file
+        @"
+        @echo off
+        echo ╔══════════════════════════════════════════════════════════════╗
+        echo ║              Starting Remote Control Client                   ║
+        echo ╚══════════════════════════════════════════════════════════════╝
+        echo.
+        echo Starting client...
+        echo.
+        start RemoteClient.exe
+        echo.
+        echo Client started! Check the application window.
+        echo Enter server IP and click Connect.
+        echo.
+        pause
+        "@ | Out-File -FilePath "release\RemoteClient\START_CLIENT.bat" -Encoding ASCII
+
+        echo "✅ Client bundle created"
+
+    - name: Create ZIP archives
+      run: |
+        echo "=== Creating ZIP archives ==="
+
+        # Create Server ZIP
+        Compress-Archive -Path "release\RemoteServer\*" -DestinationPath "release\RemoteControlServer-Windows.zip" -Force
+        $size = (Get-Item "release\RemoteControlServer-Windows.zip").Length / 1MB
+        echo "✅ Server ZIP created: $([math]::Round($size, 2)) MB"
+
+        # Create Client ZIP
+        Compress-Archive -Path "release\RemoteClient\*" -DestinationPath "release\RemoteControlClient-Windows.zip" -Force
+        $size = (Get-Item "release\RemoteControlClient-Windows.zip").Length / 1MB
+        echo "✅ Client ZIP created: $([math]::Round($size, 2)) MB"
+
+    - name: Upload Server Bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: RemoteControlServer-Windows
+        path: release/RemoteControlServer-Windows.zip
+        retention-days: 90
+
+    - name: Upload Client Bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: RemoteControlClient-Windows
+        path: release/RemoteControlClient-Windows.zip
+        retention-days: 90
+
+    - name: Create Build Summary
+      run: |
+        $serverSize = [math]::Round((Get-Item "release\RemoteControlServer-Windows.zip").Length / 1MB, 2)
+        $clientSize = [math]::Round((Get-Item "release\RemoteControlClient-Windows.zip").Length / 1MB, 2)
+
+        @"
+        # 🎉 Windows Build Successful!
+
+        ## 📦 Artifacts Created
+
+        ### 🖥️ Server Bundle
+        - **File:** RemoteControlServer-Windows.zip
+        - **Size:** $serverSize MB
+        - **Contains:**
+          - ✅ RemoteServer.exe (native Windows executable)
+          - ✅ Bundled JRE 17 (no Java install needed)
+          - ✅ README.txt with instructions
+          - ✅ START_SERVER.bat for quick launch
+
+        ### 💻 Client Bundle
+        - **File:** RemoteControlClient-Windows.zip
+        - **Size:** $clientSize MB
+        - **Contains:**
+          - ✅ RemoteClient.exe (native Windows executable)
+          - ✅ Bundled JRE 17 (no Java install needed)
+          - ✅ README.txt with instructions
+          - ✅ START_CLIENT.bat for quick launch
+
+        ## 🚀 How to Use
+
+        ### Server Setup:
+        1. Download **RemoteControlServer-Windows.zip**
+        2. Extract to any folder
+        3. Double-click **RemoteServer.exe** or **START_SERVER.bat**
+        4. Note the IP addresses shown in the UI
+
+        ### Client Setup:
+        1. Download **RemoteControlClient-Windows.zip**
+        2. Extract to any folder
+        3. Double-click **RemoteClient.exe** or **START_CLIENT.bat**
+        4. Enter server IP and click Connect
+
+        ## ✅ Features
+
+        - ✅ **No Java Required** - JRE bundled
+        - ✅ **Native .exe** - Professional look
+        - ✅ **Self-contained** - Everything included
+        - ✅ **Windows 7+** - Compatible
+        - ✅ **Easy to use** - Double-click to start
+
+        ## 📝 System Requirements
+
+        - Windows 7 or later (64-bit)
+        - ~100MB disk space per app
+        - Network adapter (for LAN connection)
+        - No admin privileges required
+
+        ## 🔥 Firewall Note
+
+        Windows may prompt to allow network access. Click "Allow" to enable communication.
+
+        ---
+
+        **Version:** 1.0.0
+        **Build Date:** $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+        **Platform:** Windows x64
+
+        "@ | Out-File -FilePath "$env:GITHUB_STEP_SUMMARY" -Encoding UTF8

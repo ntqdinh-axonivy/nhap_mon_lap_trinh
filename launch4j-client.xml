@@ -3,7 +3,7 @@
     <dontWrapJar>false</dontWrapJar>
     <headerType>gui</headerType>
     <jar>target/remote-client.jar</jar>
-    <outfile>build/RemoteClient.exe</outfile>
+    <outfile>client.exe</outfile>
     <errTitle>Remote Client Error</errTitle>
     <cmdLine></cmdLine>
     <chdir>.</chdir>
@@ -15,13 +15,14 @@
     <manifest></manifest>
     <icon></icon>
     <jre>
-        <path></path>
-        <bundledJre64Bit>false</bundledJre64Bit>
-        <bundledJreAsFallback>false</bundledJreAsFallback>
+        <path>jre</path>
+        <bundledJre64Bit>true</bundledJre64Bit>
+        <bundledJreAsFallback>true</bundledJreAsFallback>
         <minVersion>11</minVersion>
         <maxVersion></maxVersion>
         <jdkPreference>preferJre</jdkPreference>
-        <runtimeBits>64/32</runtimeBits>
+        <runtimeBits>64</runtimeBits>
+        <opts>-Dfile.encoding=UTF-8</opts>
     </jre>
     <versionInfo>
         <fileVersion>1.0.0.0</fileVersion>

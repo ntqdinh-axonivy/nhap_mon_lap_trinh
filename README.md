@@ -10,71 +10,62 @@
 
 ### ✨ Đặc điểm nổi bật
 
-- ✅ **Chạy được trên mọi máy** - Không cần cài Java!
+- ✅ **Native Windows .exe** - Professional executables
+- ✅ **Chạy được trên mọi máy Windows** - Không cần cài Java!
 - ✅ **Build trên GitHub Actions** - Không cần build trên máy cá nhân
 - ✅ **Kết nối qua IP** - Server hiển thị IP, Client nhập IP và Connect
-- ✅ **Cross-platform** - Windows, Linux, Mac
-- ✅ **Bundle JRE** - JRE 17 được đóng gói sẵn
+- ✅ **Bundled JRE** - JRE 17 minimal được đóng gói sẵn (35MB)
+- ✅ **Launch4j** - Native Windows integration
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Windows)
 
 ### Bước 1: Build trên GitHub Actions
 
 1. Push code lên GitHub:
    ```bash
    git add .
-   git commit -m "Ready for deployment"
+   git commit -m "Build Windows native executables"
    git push origin main
    ```
 
-2. Vào GitHub → **Actions** tab → Click **"Run workflow"**
+2. GitHub Actions tự động build (~4-6 phút)
+   - Hoặc manual: GitHub → **Actions** → **"Run workflow"**
 
-3. Đợi ~3-5 phút để build xong
+3. Download artifacts:
+   - `RemoteControlServer-Windows.zip` (~42MB)
+   - `RemoteControlClient-Windows.zip` (~42MB)
 
-4. Download artifacts:
-   - `remote-control-server.zip` (~60MB)
-   - `remote-control-client.zip` (~60MB)
-
-📖 **Chi tiết:** Xem [GITHUB_ACTIONS_GUIDE.md](GITHUB_ACTIONS_GUIDE.md)
+📖 **Chi tiết:** Xem [WINDOWS_BUILD_GUIDE.md](WINDOWS_BUILD_GUIDE.md)
 
 ### Bước 2: Chạy Server (máy bị điều khiển)
 
-**Windows:**
+**Windows (Native .exe):**
 ```cmd
-1. Giải nén remote-control-server.zip
-2. Double-click start-server.bat
-3. Lưu lại IP address hiện trong UI (ví dụ: 192.168.1.100)
-```
-
-**Linux/Mac:**
-```bash
-unzip remote-control-server.zip
-cd server
-./start-server.sh
-# Lưu lại IP address hiện trong UI
+1. Right-click RemoteControlServer-Windows.zip → Extract All
+2. Navigate to folder
+3. Double-click RemoteServer.exe (hoặc START_SERVER.bat)
+4. Lưu lại IP address hiện trong UI (ví dụ: 192.168.1.100)
+5. Click "Allow access" nếu Windows Firewall hỏi
 ```
 
 ### Bước 3: Chạy Client (máy điều khiển)
 
-**Windows:**
+**Windows (Native .exe):**
 ```cmd
-1. Giải nén remote-control-client.zip
-2. Double-click start-client.bat
-3. Nhập IP của Server vào ô "Server"
-4. Click "Connect"
+1. Right-click RemoteControlClient-Windows.zip → Extract All
+2. Navigate to folder  
+3. Double-click RemoteClient.exe (hoặc START_CLIENT.bat)
+4. Nhập IP của Server vào ô "Server"
+5. Port: 8888 (default)
+6. Click "Connect"
+7. Status chuyển sang green ✅
 ```
 
-**Linux/Mac:**
-```bash
-unzip remote-control-client.zip
-cd client
-./start-client.sh
-# Trong UI: nhập IP của Server và click "Connect"
-```
+**🎯 Không cần cài Java!** - JRE đã được bundle sẵn trong .exe
 
-📖 **Chi tiết:** Xem [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+📖 **Chi tiết:** Xem [WINDOWS_BUILD_GUIDE.md](WINDOWS_BUILD_GUIDE.md)
 
 ---
 
@@ -326,3 +317,110 @@ Project created for "Nhập Môn Lập Trình" course at HCMUT.
 **🚀 Happy Remote Controlling! 🎮**
 
 Made with ❤️ for learning networking and software engineering.
+
+```
+Tôi quên mất 1 chuyện: 
+out put cuối cùng là file ễ và các bundle cần thiết để chạy. App này phải chạy được trên tất cả các máy mà không cần cài thêm java hay tool gì khác.
+Hãy chek lại code cho yêu cầu này
+
+- làm sao để client và sever có thể kết nối với nhau? thông qua IP? Nếu đúng vậy, khi bật 2 app lên, hãy hiện thị ip hiện tại của máy, có 1 input trên client để nhập ip của server và 1 nút connect để bắt dầu điều khiển
+- tôi không muốn build code trên máy cá nhân của mình. Tôi research thì thấy github action có thể giúp tôi build code trên ubutu latest. Hãy tạo 1 workflow để tôi build code và zip lại tất cả các file cần thiết ở 2 app để tôi có thể start 2 app ngay
+```
+
+Tuyệt! Đây là 2 yêu cầu quan trọng. Để tôi check và fix:
+
+1️⃣ Check connection logic hiện tại
+Read ClientUI.java, ServerUI.java, ClientMain.java
+Tốt! Tôi thấy ClientUI đã có input field cho IP/Port. Giờ check ServerUI để thêm hiển thị IP:
+
+Read ServerMain.java, ServerCore.java
+Tốt! Giờ tôi sẽ:
+
+Thêm hiển thị IP cho Server UI
+Tạo GitHub Actions workflow để build với JRE bundled
+Giờ tạo tài liệu hướng dẫn sử dụng GitHub Actions:
+
+# 🚀 GitHub Actions Build Guide
+
+## Tổng quan
+
+GitHub Actions workflow sẽ tự động:
+1. ✅ Build cả Server và Client JAR files
+2. ✅ Download JRE 17 từ Adoptium
+3. ✅ Bundle JRE vào mỗi app (không cần cài Java trên máy chạy!)
+4. ✅ Tạo launch scripts cho Windows/Linux/Mac
+5. ✅ Đóng gói thành 2 ZIP files: `remote-control-server.zip` và `remote-control-client.zip`
+
+## 📋 Yêu cầu
+
+- Repository phải được push lên GitHub
+- Không cần cài đặt gì trên máy local của bạn
+- GitHub Actions sẽ build trên Ubuntu VM
+
+## 📦 Cấu trúc ZIP files
+
+### remote-control-server.zip
+```
+server/
+├── remote-server.jar          # Server application
+├── jre/                        # Bundled Java Runtime
+│   ├── bin/java
+│   ├── lib/
+│   └── ...
+├── start-server.sh            # Linux/Mac launcher
+├── start-server.bat           # Windows launcher
+└── README.txt
+```
+
+### remote-control-client.zip
+```
+client/
+├── remote-client.jar          # Client application
+├── jre/                        # Bundled Java Runtime
+│   ├── bin/java
+│   ├── lib/
+│   └── ...
+├── start-client.sh            # Linux/Mac launcher
+├── start-client.bat           # Windows launcher
+└── README.txt
+```
+
+---
+
+## 🖥️ Cách chạy trên máy KHÔNG CÓ Java
+
+### Trên Server (máy bị điều khiển):
+
+**Windows:**
+```cmd
+1. Giải nén remote-control-server.zip
+2. Double-click start-server.bat
+3. Note IP address hiện trong UI
+```
+
+**Linux/Mac:**
+```bash
+1. unzip remote-control-server.zip
+2. cd server
+3. ./start-server.sh
+4. Note IP address hiện trong UI
+```
+
+### Trên Client (máy điều khiển):
+
+**Windows:**
+```cmd
+1. Giải nén remote-control-client.zip
+2. Double-click start-client.bat
+3. Nhập IP của server vào ô "Server"
+4. Click "Connect"
+```
+
+**Linux/Mac:**
+```bash
+1. unzip remote-control-client.zip
+2. cd client
+3. ./start-client.sh
+4. Nhập IP của server vào ô "Server"
+5. Click "Connect"
+```
