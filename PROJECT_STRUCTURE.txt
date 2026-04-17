@@ -1,0 +1,273 @@
+RemoteControlApp/
+├── src/
+│   ├── common/                          ✅ HOÀN THÀNH
+│   │   ├── Message.java                # Protocol message
+│   │   ├── MessageType.java            # REQUEST, RESPONSE, STREAM, ERROR
+│   │   ├── ActionType.java             # LIST_APPS, SCREENSHOT, etc.
+│   │   ├── NetworkUtils.java           # TCP send/receive + chunking
+│   │   ├── FileChunkReceiver.java      # Reassemble file chunks
+│   │   ├── LogManager.java             # 3-way logging system
+│   │   ├── Constants.java              # All constants
+│   │   └── Demo_FileTransfer.java      # Demo chunking mechanism
+│   │
+│   ├── server/                          ⏳ TODO
+│   │   ├── ServerMain.java             # Entry point
+│   │   ├── ServerCore.java             # TCP listener + thread pool
+│   │   ├── MessageRouter.java          # Route to handlers
+│   │   │
+│   │   ├── handlers/
+│   │   │   ├── ApplicationHandler.java # List/Start/Stop apps
+│   │   │   ├── ProcessHandler.java     # Process management
+│   │   │   ├── ScreenCaptureHandler.java
+│   │   │   ├── KeyloggerHandler.java
+│   │   │   ├── FileTransferHandler.java
+│   │   │   ├── SystemControlHandler.java
+│   │   │   ├── WebcamHandler.java
+│   │   │   ├── NetworkMonitorHandler.java
+│   │   │   ├── RemoteDesktopHandler.java
+│   │   │   └── SystemLockHandler.java
+│   │   │
+│   │   └── ui/
+│   │       └── ServerUI.java           # Log window
+│   │
+│   └── client/                          ⏳ TODO
+│       ├── ClientMain.java             # Entry point
+│       ├── ClientCore.java             # Socket connection
+│       ├── MessageSender.java          # Send messages
+│       │
+│       ├── controllers/
+│       │   ├── ApplicationController.java
+│       │   ├── ProcessController.java
+│       │   ├── ScreenCaptureController.java
+│       │   ├── KeyloggerController.java
+│       │   ├── FileTransferController.java
+│       │   ├── SystemControlController.java
+│       │   ├── WebcamController.java
+│       │   ├── NetworkMonitorController.java
+│       │   ├── RemoteDesktopController.java
+│       │   └── SystemLockController.java
+│       │
+│       └── ui/
+│           ├── ClientUI.java           # Main window
+│           └── tabs/
+│               ├── ApplicationTab.java
+│               ├── ProcessTab.java
+│               ├── ScreenCaptureTab.java
+│               ├── KeyloggerTab.java
+│               ├── FileTransferTab.java
+│               ├── SystemControlTab.java
+│               ├── WebcamTab.java
+│               ├── NetworkMonitorTab.java
+│               ├── RemoteDesktopTab.java
+│               └── SystemLockTab.java
+│
+├── resources/
+│   ├── icons/
+│   │   ├── client.ico
+│   │   ├── server.ico
+│   │   └── word-fake.ico              # For trojan disguise
+│   └── config.properties
+│
+├── build/                               ⏳ TODO
+│   ├── pom.xml                         # Maven build config
+│   ├── launch4j-server.xml             # Server EXE config
+│   └── launch4j-client.xml             # Client EXE config
+│
+├── docs/                                ✅ HOÀN THÀNH
+│   ├── README.md                       # Project overview
+│   ├── ARCHITECTURE.md                 # Use cases detailed
+│   ├── ANSWERS_TO_QUESTIONS.md         # All Q&A
+│   └── PROJECT_STRUCTURE.txt           # This file
+│
+└── output/                              ⏳ TODO (after build)
+    ├── RemoteServer.exe
+    ├── RemoteClient.exe
+    ├── server.log
+    └── client.log
+
+
+═══════════════════════════════════════════════════════════════
+KIẾN TRÚC NETWORKING
+═══════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────┐
+│                    CLIENT APP                                 │
+├──────────────────────────────────────────────────────────────┤
+│  ClientUI (Swing)                                             │
+│  ├─ Tab 1: Applications                                       │
+│  ├─ Tab 2: Processes                                          │
+│  ├─ Tab 3: Screenshot                                         │
+│  ├─ Tab 4: Keylogger                                          │
+│  ├─ Tab 5: File Transfer                                      │
+│  ├─ Tab 6: System Control                                     │
+│  ├─ Tab 7: Webcam                                             │
+│  ├─ Tab 8: Network Monitor                                    │
+│  ├─ Tab 9: Remote Desktop                                     │
+│  ├─ Tab 10: System Lock                                       │
+│  └─ Log Panel (auto-scroll)                                   │
+├──────────────────────────────────────────────────────────────┤
+│  ClientCore                                                   │
+│  - Socket connection to server                                │
+│  - Message sender/receiver                                    │
+│  - FileChunkReceiver for downloads                            │
+└──────────────────────────────────────────────────────────────┘
+                        │
+                        │ TCP Socket (Port 8888)
+                        │ Length-Prefix Protocol
+                        │ [4 bytes length][JSON data]
+                        ↓
+┌──────────────────────────────────────────────────────────────┐
+│                    SERVER APP                                 │
+├──────────────────────────────────────────────────────────────┤
+│  ServerCore                                                   │
+│  - ServerSocket listener (port 8888)                          │
+│  - ExecutorService thread pool                                │
+│  - Multi-threaded client handlers                             │
+├──────────────────────────────────────────────────────────────┤
+│  MessageRouter                                                │
+│  - Route messages by action type                              │
+│  - Error handling                                             │
+├──────────────────────────────────────────────────────────────┤
+│  Handlers (10 modules)                                        │
+│  ├─ ApplicationHandler                                        │
+│  ├─ ProcessHandler                                            │
+│  ├─ ScreenCaptureHandler (Robot class)                        │
+│  ├─ KeyloggerHandler (JNativeHook)                            │
+│  ├─ FileTransferHandler (chunked)                             │
+│  ├─ SystemControlHandler (shutdown/restart)                   │
+│  ├─ WebcamHandler (JavaCV/Webcam-Capture)                     │
+│  ├─ NetworkMonitorHandler (bandwidth/latency)                 │
+│  ├─ RemoteDesktopHandler (screen stream + mouse/kbd)          │
+│  └─ SystemLockHandler (User32 BlockInput)                     │
+└──────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════
+MESSAGE FLOW EXAMPLES
+═══════════════════════════════════════════════════════════════
+
+1. LIST APPLICATIONS
+   ─────────────────
+   Client                          Server
+     │──REQUEST: LIST_APPS────────→│
+     │                              │ [Execute PowerShell]
+     │                              │ Get-Process | Where MainWindowTitle
+     │←─RESPONSE: LIST_APPS─────────│
+     │  {apps: [...]}               │
+
+
+2. SCREENSHOT
+   ──────────
+   Client                          Server
+     │──REQUEST: SCREENSHOT────────→│
+     │                              │ [Robot.createScreenCapture()]
+     │                              │ [Encode to JPEG]
+     │←─RESPONSE: SCREENSHOT────────│
+     │  {image: base64, size: ...}  │
+
+
+3. FILE TRANSFER (CHUNKED)
+   ────────────────────────
+   Client                          Server
+     │──REQUEST: DOWNLOAD_FILE─────→│
+     │  {fileId, path}              │
+     │                              │ [Open file]
+     │←─STREAM: FILE_INFO───────────│
+     │  {fileSize, totalChunks}     │
+     │                              │ [Read chunk 0]
+     │←─STREAM: FILE_CHUNK_0────────│ (1MB)
+     │←─STREAM: FILE_CHUNK_1────────│ (1MB)
+     │      ... 1024 chunks ...     │
+     │←─STREAM: FILE_CHUNK_1023─────│ (1MB)
+     │  [FileChunkReceiver.addChunk()]
+     │  [Reassemble when complete]  │
+     │←─RESPONSE: TRANSFER_COMPLETE─│
+
+
+4. WEBCAM STREAMING
+   ─────────────────
+   Client                          Server
+     │──REQUEST: START_WEBCAM──────→│
+     │                              │ [Start webcam thread]
+     │←─STREAM: WEBCAM_FRAME────────│ (JPEG 30KB)
+     │←─STREAM: WEBCAM_FRAME────────│ (15 FPS)
+     │←─STREAM: WEBCAM_FRAME────────│
+     │      ... continuous ...      │
+     │──REQUEST: STOP_WEBCAM───────→│
+     │                              │ [Stop thread]
+     │←─RESPONSE: STOP_WEBCAM───────│
+
+
+5. CONCURRENT OPERATIONS
+   ──────────────────────
+   Client                          Server
+     │──REQUEST: START_WEBCAM──────→│
+     │                              │ Thread 2: [Stream webcam]
+     │←─STREAM: WEBCAM_FRAME────────│  ↓
+     │                              │  ↓
+     │──REQUEST: LOCK_SYSTEM───────→│ Thread 1: [Lock keyboard/mouse]
+     │←─RESPONSE: LOCK_SYSTEM───────│  ↑ (immediate)
+     │                              │  ↓ (still streaming)
+     │←─STREAM: WEBCAM_FRAME────────│  ↓
+     │                              │  ↓
+     │──REQUEST: KILL_PROCESS──────→│ Thread 1: [Kill process]
+     │←─RESPONSE: KILL_PROCESS──────│  ↑ (immediate)
+     │←─STREAM: WEBCAM_FRAME────────│  ↓ (still streaming)
+
+
+═══════════════════════════════════════════════════════════════
+PROGRESS SUMMARY
+═══════════════════════════════════════════════════════════════
+
+✅ COMPLETED (Phase 1 - Core Framework)
+  - Message protocol (Message.java)
+  - Message types (REQUEST, RESPONSE, STREAM, ERROR)
+  - Action types (10 categories, 30+ actions)
+  - Network utilities (send/receive with length-prefix)
+  - File chunking mechanism (FileChunkReceiver)
+  - Logging system (3-way: console, file, UI)
+  - Constants configuration
+  - Demo file transfer
+
+⏳ TODO (Phase 2 - Server Implementation)
+  - ServerMain, ServerCore, MessageRouter
+  - 10 Handlers implementation
+  - ServerUI (simple log window)
+
+⏳ TODO (Phase 3 - Client Implementation)
+  - ClientMain, ClientCore, MessageSender
+  - 10 Controllers implementation
+  - ClientUI (tabbed interface)
+  - 10 Tab UIs (Swing)
+
+⏳ TODO (Phase 4 - Build & Deploy)
+  - Maven pom.xml
+  - Launch4j configs
+  - Build scripts
+  - Icons and resources
+
+
+═══════════════════════════════════════════════════════════════
+NEXT STEPS
+═══════════════════════════════════════════════════════════════
+
+OPTION A: Implement Server Handlers
+  → 10 handler classes với full functionality
+  → Test từng handler riêng
+  → Integration test
+
+OPTION B: Implement Client UI
+  → Swing tabbed interface
+  → 10 tabs cho 10 features
+  → Log panel integration
+
+OPTION C: Build System
+  → Maven pom.xml
+  → Launch4j configs
+  → Build scripts (.bat/.sh)
+
+OPTION D: Focus on specific feature
+  → Pick one (e.g., ScreenCapture, Webcam)
+  → Implement end-to-end (Server + Client)
+  → Test thoroughly
+
