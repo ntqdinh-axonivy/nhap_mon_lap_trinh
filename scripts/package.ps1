@@ -48,7 +48,7 @@ New-Item -Path "$DistPath\remote-client" -ItemType Directory | Out-Null
 Copy-Item -Path $ClientJar -Destination "$DistPath\remote-client\remote-client.jar"
 
 # Create Client README
-@"
+$clientReadme = @'
 ===============================================================
 REMOTE CONTROL CLIENT APPLICATION
 ===============================================================
@@ -56,7 +56,7 @@ REMOTE CONTROL CLIENT APPLICATION
 Version: 1.0.0
 Language: Java 11+
 Author: Your Name
-Date: $(Get-Date -Format 'yyyy-MM-dd')
+Installation Date: Run this from the extracted ZIP
 
 PREREQUISITES:
 - Java 11 or higher installed
@@ -90,10 +90,11 @@ A: Ensure server is running and both machines are on same LAN
 For more info, see: log.md in project root
 
 ===============================================================
-"@ | Set-Content -Path "$DistPath\remote-client\README.txt" -Encoding UTF8
+'@
+$clientReadme | Set-Content -Path "$DistPath\remote-client\README.txt" -Encoding UTF8
 
 # Create Client launcher batch file
-@"
+$clientRunBat = @'
 @echo off
 REM Launch Remote Control Client
 REM Prerequisites: Java 11+
@@ -120,11 +121,11 @@ if errorlevel 1 (
 echo Starting Remote Control Client...
 java -jar "!JAR_FILE!"
 pause
-
-"@ | Set-Content -Path "$DistPath\remote-client\run.bat" -Encoding ASCII
+'@
+$clientRunBat | Set-Content -Path "$DistPath\remote-client\run.bat" -Encoding ASCII
 
 # Create config template for Client
-@"
+$clientConfig = @'
 # Remote Control Client Configuration
 # Edit this file to customize behavior
 
@@ -151,8 +152,8 @@ file.chunk.size=1048576
 
 # Network monitoring settings
 monitor.refresh.interval=1000
-
-"@ | Set-Content -Path "$DistPath\remote-client\config.properties" -Encoding UTF8
+'@
+$clientConfig | Set-Content -Path "$DistPath\remote-client\config.properties" -Encoding UTF8
 
 Write-Host "✓ Client package created"
 Write-Host ""
@@ -163,7 +164,7 @@ New-Item -Path "$DistPath\remote-server" -ItemType Directory | Out-Null
 Copy-Item -Path $ServerJar -Destination "$DistPath\remote-server\remote-server.jar"
 
 # Create Server README
-@"
+$serverReadme = @'
 ===============================================================
 REMOTE CONTROL SERVER APPLICATION
 ===============================================================
@@ -171,7 +172,7 @@ REMOTE CONTROL SERVER APPLICATION
 Version: 1.0.0
 Language: Java 11+
 Author: Your Name
-Date: $(Get-Date -Format 'yyyy-MM-dd')
+Installation Date: Run this from the extracted ZIP
 
 PREREQUISITES:
 - Java 11 or higher installed
@@ -220,10 +221,11 @@ A: Check firewall - ensure TCP port 8888 is open
 For more info, see: log.md in project root
 
 ===============================================================
-"@ | Set-Content -Path "$DistPath\remote-server\README.txt" -Encoding UTF8
+'@
+$serverReadme | Set-Content -Path "$DistPath\remote-server\README.txt" -Encoding UTF8
 
 # Create Server launcher batch file
-@"
+$serverRunBat = @'
 @echo off
 REM Launch Remote Control Server
 REM Prerequisites: Java 11+
@@ -252,11 +254,11 @@ echo Starting Remote Control Server...
 echo NOTE: Some features may require Administrator privileges
 java -jar "!JAR_FILE!"
 pause
-
-"@ | Set-Content -Path "$DistPath\remote-server\run.bat" -Encoding ASCII
+'@
+$serverRunBat | Set-Content -Path "$DistPath\remote-server\run.bat" -Encoding ASCII
 
 # Create config template for Server
-@"
+$serverConfig = @'
 # Remote Control Server Configuration
 # Edit this file to customize behavior
 
@@ -291,8 +293,8 @@ webcam.quality=80
 # Network monitoring settings
 monitor.enabled=true
 monitor.refresh.interval=1000
-
-"@ | Set-Content -Path "$DistPath\remote-server\config.properties" -Encoding UTF8
+'@
+$serverConfig | Set-Content -Path "$DistPath\remote-server\config.properties" -Encoding UTF8
 
 Write-Host "✓ Server package created"
 Write-Host ""
